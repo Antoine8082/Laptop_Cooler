@@ -1,0 +1,19 @@
+{
+  "serial_port": "COM4",
+  "baud_rate": 115200,
+  "curve": {
+    "40": 0,
+    "50": 10,
+    "60": 30,
+    "70": 50,
+    "80": 75,
+    "90": 100
+  },
+  "hysteresis": 3,
+  "alpha": 0.15,
+  "max_rpm_limit": 28000,
+  "overdrive": 0,
+  "load_threshold": 70,
+  "boost_pwm": 15,
+  "update_interval_ms": 1000
+}
