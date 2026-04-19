@@ -180,11 +180,20 @@ void processCommand(const String &cmd) {
 
 // ─── Contrôle moteur ────────────────────────────────────────────────────────
 
+// Seuil minimum PWM : le driver démarre à 0.244V sur VSR (0-5V).
+// 0.244 / 5.0 = 4.88% → on arrondit à 5% pour garantir le démarrage.
+const byte MIN_PWM_PERCENT = 5;
+
 void setMotor(byte pwmPercent, bool enable) {
   motorEnabled = enable;
   
   // Enable/Disable du driver
   digitalWrite(PIN_ENABLE, enable ? HIGH : LOW);
+  
+  // Appliquer le plancher minimum (zone morte du driver)
+  if (enable && pwmPercent > 0 && pwmPercent < MIN_PWM_PERCENT) {
+    pwmPercent = MIN_PWM_PERCENT;
+  }
   
   // Conversion 0-100% → 0-1599 (résolution Timer1 à 10 kHz)
   unsigned int duty = 0;
