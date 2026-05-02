@@ -6,7 +6,7 @@
  *  
  *  Brochage :
  *    D9  → PWM (sortie vers driver, 10 kHz via Timer1)
- *    D8  → Enable (HIGH = moteur actif, LOW = moteur coupé)
+ *    D8  → Enable (INPUT/flottant = moteur actif, OUTPUT LOW/GND = moteur coupé)
  *    D2  → Tachymètre / FG (entrée interruption INT0, INPUT_PULLUP)
  *  
  *  Protocole Série (115200 bauds) :
