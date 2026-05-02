@@ -43,8 +43,9 @@ String        serialBuffer    = "";     // Buffer de réception série
 
 void setup() {
   // --- Pins ---
-  pinMode(PIN_ENABLE, OUTPUT);
-  digitalWrite(PIN_ENABLE, LOW);  // Moteur coupé au démarrage
+  // EN : open-drain — LOW (GND) = stop, INPUT (flottant) = run
+  digitalWrite(PIN_ENABLE, LOW);
+  pinMode(PIN_ENABLE, OUTPUT);   // Moteur coupé au démarrage
 
   // Tachymètre : INPUT_PULLUP obligatoire (sortie collecteur ouvert du driver)
   pinMode(PIN_TACHO, INPUT_PULLUP);
@@ -186,9 +187,15 @@ const byte MIN_PWM_PERCENT = 5;
 
 void setMotor(byte pwmPercent, bool enable) {
   motorEnabled = enable;
-  
-  // Enable/Disable du driver
-  digitalWrite(PIN_ENABLE, enable ? HIGH : LOW);
+
+  // EN open-drain : INPUT (flottant) = déconnecté de GND = Run
+  //                 OUTPUT LOW (GND) = Stop
+  if (enable) {
+    pinMode(PIN_ENABLE, INPUT);
+  } else {
+    pinMode(PIN_ENABLE, OUTPUT);
+    digitalWrite(PIN_ENABLE, LOW);
+  }
   
   // Appliquer le plancher minimum (zone morte du driver)
   if (enable && pwmPercent > 0 && pwmPercent < MIN_PWM_PERCENT) {
