@@ -169,9 +169,9 @@ void processCommand(const char *cmd) {
 
 // ─── Contrôle moteur ────────────────────────────────────────────────────────
 
-// Seuil minimum PWM : le driver démarre à 0.25V sur VSR (0-5V).
-// 0.25 / 5.0 = 5.0% → seuil exact, garantit le démarrage et évite les arrêts intempestifs.
-const byte MIN_PWM_PERCENT = 5;
+// Seuil minimum en valeur Timer1 directe (résolution 3.1 mV/step, VSR 0-5V).
+// Formule : V / 5.0 * 1599.  Ex : 0.30V→96  0.31V→99  0.32V→102  0.33V→106  0.35V→112
+const unsigned int MIN_DUTY = 109;  // 0.34V
 
 void setMotor(byte pwmPercent, bool enable) {
   motorEnabled = enable;
@@ -185,15 +185,11 @@ void setMotor(byte pwmPercent, bool enable) {
     digitalWrite(PIN_ENABLE, LOW);
   }
 
-  // Appliquer le plancher minimum (zone morte du driver)
-  if (enable && pwmPercent > 0 && pwmPercent < MIN_PWM_PERCENT) {
-    pwmPercent = MIN_PWM_PERCENT;
-  }
-
-  // Conversion 0-100% → 0-1599 (résolution Timer1 à 10 kHz)
+  // Conversion 0-100% → 0-1599, plancher MIN_DUTY appliqué après
   unsigned int duty = 0;
   if (enable && pwmPercent > 0) {
     duty = (unsigned int)map(pwmPercent, 0, 100, 0, 1599);
+    if (duty < MIN_DUTY) duty = MIN_DUTY;
   }
 
   OCR1A = duty;

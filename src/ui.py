@@ -63,12 +63,13 @@ class SettingsWindow:
     Fenêtre principale de réglages avec tableau de bord temps réel.
     """
 
-    def __init__(self, root, config_manager, serial_manager, on_apply_callback, on_turbine_toggle=None):
+    def __init__(self, root, config_manager, serial_manager, on_apply_callback, on_turbine_toggle=None, on_fixed_speed_toggle=None):
         self.root = root
         self._config = config_manager
         self._serial = serial_manager
         self._on_apply = on_apply_callback
         self._on_turbine_toggle = on_turbine_toggle
+        self._on_fixed_speed_toggle = on_fixed_speed_toggle
 
         # Données temps réel (mises à jour par le main loop)
         self._telemetry = {"cpu_temp": 0, "gpu_temp": 0, "cpu_load": 0, "gpu_load": 0}
@@ -78,6 +79,7 @@ class SettingsWindow:
         # Variables tkinter
         self._vars = {}
         self._curve_vars = {}
+        self._fixed_speed_enabled = False
 
         self._setup_window()
         self._build_ui()
@@ -292,6 +294,7 @@ class SettingsWindow:
             ("overdrive",      "Overdrive Manuel",    0,    30,   cfg["overdrive"],         1,    "%",   "Décalage fixe (%) ajouté inconditionnellement\nau ventilateur pour augmenter le refroidissement de manière globale."),
             ("load_threshold", "Seuil Charge (%)",    10,   100,  cfg["load_threshold"],    5,    "%",   "Seuil d'utilisation CPU/GPU (tâche lourde)\nau-delà duquel on applique immédiatement le Boost PWM."),
             ("boost_pwm",      "Boost PWM (%)",       0,    50,   cfg["boost_pwm"],         1,    "%",   "Coup de fouet. Puissance supplémentaire instantanée\najoutée dès que le 'Seuil Charge' est dépassé."),
+            ("fixed_speed_pwm",  "Manuel (%)",          0,   100, cfg.get("fixed_speed_pwm", 10),   1,   "%",  "PWM cible en mode Manuel.\nLa courbe de réponse est ignorée.\nLe RPM réel est visible dans le tableau de bord."),
         ]
 
         for key, label, from_, to_, default, resolution, unit, tooltip_text in params:
@@ -364,18 +367,25 @@ class SettingsWindow:
         # Turbine toggle
         self._turbine_enabled = True
         self._turbine_btn = ttk.Button(
-            bar, text="⏸ Désactiver Turbine",
+            bar, text="⏸ Turbine", width=12,
             command=self._toggle_turbine
         )
         self._turbine_btn.pack(side="left", padx=(20, 0))
 
+        # Mode Manuel toggle
+        self._fixed_speed_btn = ttk.Button(
+            bar, text="📌 Manuel", width=12,
+            command=self._toggle_fixed_speed
+        )
+        self._fixed_speed_btn.pack(side="left", padx=(8, 0))
+
     def _toggle_turbine(self):
         self._turbine_enabled = not self._turbine_enabled
         if self._turbine_enabled:
-            self._turbine_btn.configure(text="⏸ Désactiver Turbine")
+            self._turbine_btn.configure(text="⏸ Turbine")
         else:
-            self._turbine_btn.configure(text="▶ Activer Turbine")
-            
+            self._turbine_btn.configure(text="▶ Turbine")
+
         if self._on_turbine_toggle:
             self._on_turbine_toggle(self._turbine_enabled)
 
@@ -384,9 +394,27 @@ class SettingsWindow:
         if self._turbine_enabled != enabled:
             self._turbine_enabled = enabled
             if enabled:
-                self._turbine_btn.configure(text="⏸ Désactiver Turbine")
+                self._turbine_btn.configure(text="⏸ Turbine")
             else:
-                self._turbine_btn.configure(text="▶ Activer Turbine")
+                self._turbine_btn.configure(text="▶ Turbine")
+
+    def _toggle_fixed_speed(self):
+        self._fixed_speed_enabled = not self._fixed_speed_enabled
+        if self._fixed_speed_enabled:
+            self._fixed_speed_btn.configure(text="⏹ Manuel")
+        else:
+            self._fixed_speed_btn.configure(text="📌 Manuel")
+        if self._on_fixed_speed_toggle:
+            self._on_fixed_speed_toggle(self._fixed_speed_enabled)
+
+    def set_fixed_speed_state(self, enabled):
+        """Met à jour l'état du bouton depuis l'extérieur."""
+        if self._fixed_speed_enabled != enabled:
+            self._fixed_speed_enabled = enabled
+            if enabled:
+                self._fixed_speed_btn.configure(text="⏹ Manuel")
+            else:
+                self._fixed_speed_btn.configure(text="📌 Manuel")
 
     def _refresh_ports(self):
         """Rafraîchit la liste des ports COM."""

@@ -45,6 +45,7 @@ class LaptopCoolerApp:
 
         # ── État ──
         self._paused = False
+        self._fixed_speed = False
         self._running = True
         self._current_pwm = 0.0
         self._current_rpm = 0
@@ -58,6 +59,7 @@ class LaptopCoolerApp:
             self._root, self._config, self._serial,
             on_apply_callback=self._on_settings_applied,
             on_turbine_toggle=self._on_turbine_toggle_ui,
+            on_fixed_speed_toggle=self._on_fixed_speed_toggle_ui,
         )
 
         # ── System Tray ──
@@ -66,6 +68,11 @@ class LaptopCoolerApp:
             pause_callback=self._toggle_pause,
             quit_callback=self._quit,
         )
+
+        # ── Restaurer le mode vitesse fixe si actif à la dernière session ──
+        if self._config.get("fixed_speed_mode", False):
+            self._fixed_speed = True
+            self._ui.set_fixed_speed_state(True)
 
         # ── Gestion de la fermeture de la fenêtre ──
         self._root.protocol("WM_DELETE_WINDOW", self._hide_window)
@@ -117,6 +124,9 @@ class LaptopCoolerApp:
             # 3. Calculer le PWM (sauf si en pause)
             if self._paused:
                 pwm = 0.0
+            elif self._fixed_speed:
+                pwm = max(6.0, float(self._config.get("fixed_speed_pwm", 10)))
+                self._controller.notify_actual_pwm(pwm)
             else:
                 pwm = max(6.0, self._controller.compute(telem))
                 self._controller.notify_actual_pwm(pwm)  # Sync état interne avec valeur réelle
@@ -182,6 +192,13 @@ class LaptopCoolerApp:
     def _on_turbine_toggle_ui(self, enabled):
         """Appelé par l'UI principale pour activer/désactiver le moteur."""
         self._toggle_pause(not enabled)
+
+    def _on_fixed_speed_toggle_ui(self, enabled):
+        """Appelé par l'UI pour activer/désactiver le mode vitesse fixe."""
+        self._fixed_speed = enabled
+        self._config.set("fixed_speed_mode", enabled)  # Persisté immédiatement
+        self._controller.reset()
+        print(f"[App] Mode Vitesse Fixe {'ACTIVÉ' if enabled else 'DÉSACTIVÉ'}")
 
     def _toggle_pause(self, paused):
         """Toggle pause/resume de la régulation."""

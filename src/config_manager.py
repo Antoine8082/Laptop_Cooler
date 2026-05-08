@@ -27,6 +27,8 @@ DEFAULT_CONFIG = {
     "overdrive": 0,
     "load_threshold": 70,
     "boost_pwm": 15,
+    "fixed_speed_pwm": 10,
+    "fixed_speed_mode": False,
     "update_interval_ms": 1000
 }
 
