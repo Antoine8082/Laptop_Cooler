@@ -32,8 +32,11 @@ volatile unsigned long pulseCount = 0;  // Compteur d'impulsions (modifié dans 
 unsigned long lastRpmTime = 0;      // Dernier calcul RPM
 unsigned long currentRPM  = 0;     // RPM calculé
 byte          currentPWM  = 0;     // Consigne PWM courante (0-100)
-bool          motorEnabled = false; // État du moteur
-String        serialBuffer = "";    // Buffer de réception série
+bool motorEnabled = false;          // État du moteur
+
+const byte SERIAL_BUF_SIZE = 32;
+char serialBuffer[SERIAL_BUF_SIZE]; // Buffer de réception série (char[] fixe, pas de heap)
+byte serialBufLen = 0;
 
 // ─── Setup ──────────────────────────────────────────────────────────────────
 
@@ -74,7 +77,6 @@ void setup() {
 
   // --- Série ---
   Serial.begin(SERIAL_BAUD);
-  serialBuffer.reserve(32);  // Pré-allouer le buffer
 
   lastRpmTime = millis();
 
@@ -127,13 +129,14 @@ void readSerialCommands() {
     char c = Serial.read();
 
     if (c == '\n' || c == '\r') {
-      if (serialBuffer.length() > 0) {
+      if (serialBufLen > 0) {
+        serialBuffer[serialBufLen] = '\0';
         processCommand(serialBuffer);
-        serialBuffer = "";
+        serialBufLen = 0;
       }
     } else {
-      if (serialBuffer.length() < 30) {  // Protection overflow
-        serialBuffer += c;
+      if (serialBufLen < SERIAL_BUF_SIZE - 1) {
+        serialBuffer[serialBufLen++] = c;
       }
     }
   }
@@ -141,10 +144,10 @@ void readSerialCommands() {
 
 // ─── Traitement d'une commande ──────────────────────────────────────────────
 
-void processCommand(const String &cmd) {
+void processCommand(const char *cmd) {
   // Format attendu : "PWM:xx" où xx = 0..100
-  if (cmd.startsWith("PWM:")) {
-    int value = cmd.substring(4).toInt();
+  if (strncmp(cmd, "PWM:", 4) == 0) {
+    int value = atoi(cmd + 4);
 
     // Validation de la plage
     if (value < 0)   value = 0;

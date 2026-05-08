@@ -39,6 +39,7 @@ class LaptopCoolerApp:
         self._serial = SerialManager(
             port=self._config.get("serial_port", "COM3"),
             baudrate=self._config.get("baud_rate", 115200),
+            port_changed_callback=lambda p: self._config.set("serial_port", p),
         )
         self._controller = CoolingController(self._config)
 
@@ -161,9 +162,13 @@ class LaptopCoolerApp:
             self._serial.set_port(new_port)
             print(f"[App] Port série changé → {new_port}")
 
-        # Réinitialiser le contrôleur si la courbe change
-        if "curve" in updates:
+        # Réinitialiser le contrôleur si un paramètre de régulation change
+        if any(k in updates for k in ("curve", "alpha", "hysteresis", "max_rpm_limit")):
             self._controller.reset()
+
+        # Mettre à jour l'intervalle du thread télémétrie si changé
+        if "update_interval_ms" in updates:
+            self._telemetry.set_interval(updates["update_interval_ms"])
 
     def _show_window(self):
         """Affiche la fenêtre de réglages (appelé depuis le tray)."""
@@ -186,11 +191,9 @@ class LaptopCoolerApp:
             self._ui.set_turbine_state(not paused)
             
         if paused:
-            self._serial.send_pwm(0)
             self._serial.pause()
             print("[App] Régulation en PAUSE — PWM → 0")
         else:
-            self._serial.resume()
             self._controller.reset()
             print("[App] Régulation REPRISE")
 

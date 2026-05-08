@@ -79,8 +79,9 @@ class CoolingController:
         return round(pwm_final, 1)
 
     def notify_actual_pwm(self, value: float):
-        """Synchronise _previous_pwm avec le PWM réellement envoyé à l'Arduino (plancher inclus)."""
+        """Synchronise l'état interne avec le PWM réellement envoyé à l'Arduino (plancher inclus)."""
         self._previous_pwm = float(value)
+        self._last_base_pwm = min(self._last_base_pwm, float(value))
 
     def reset(self):
         """Réinitialise l'état interne du contrôleur."""

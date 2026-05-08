@@ -86,6 +86,7 @@ class HardwareMonitor:
 
         self._thread = None
         self._thread_running = False
+        self._interval = 1.0  # secondes, mis à jour par start() ou set_interval()
 
         if LHM_AVAILABLE:
             try:
@@ -102,16 +103,23 @@ class HardwareMonitor:
         """Démarre la lecture des capteurs dans un thread background."""
         if self._thread is not None and self._thread.is_alive():
             return
+        self._interval = interval_ms / 1000.0
         self._thread_running = True
-        self._thread = threading.Thread(target=self._run_loop, args=(interval_ms / 1000.0,),
-                                        daemon=True, name="TelemetryThread")
+        self._thread = threading.Thread(target=self._run_loop, daemon=True, name="TelemetryThread")
         self._thread.start()
 
-    def _run_loop(self, interval_s):
+    def set_interval(self, interval_ms):
+        """Met à jour l'intervalle de polling à chaud."""
+        self._interval = max(0.1, interval_ms / 1000.0)
+
+    def _run_loop(self):
         """Boucle interne du thread télémétrie."""
         while self._thread_running:
-            self.update()
-            time.sleep(interval_s)
+            try:
+                self.update()
+            except Exception as e:
+                print(f"[Telemetry] Erreur thread : {e}")
+            time.sleep(self._interval)
 
     def update(self):
         """

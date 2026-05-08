@@ -18,13 +18,13 @@ class SerialManager:
     - Reconnexion automatique si le port est perdu.
     """
 
-    def __init__(self, port="COM3", baudrate=115200):
+    def __init__(self, port="COM3", baudrate=115200, port_changed_callback=None):
         self._port = port
         self._baudrate = baudrate
         self._serial = None
         self._running = False
         self._connected = False
-        self._paused = False
+        self._port_changed_callback = port_changed_callback
 
         # Queue thread-safe pour les RPM (le thread série écrit, le main lit)
         self.rpm_queue = queue.Queue(maxsize=10)
@@ -34,7 +34,7 @@ class SerialManager:
 
         # Keepalive : renvoie la dernière consigne si le main thread se bloque
         self._last_pwm_sent = 0
-        self._last_send_time = 0.0
+        self._last_send_time = time.time()  # Évite un keepalive PWM:0 au premier cycle
         self._keepalive_interval = 3.0  # secondes
 
         # Dernière valeur RPM connue
@@ -106,12 +106,7 @@ class SerialManager:
 
     def pause(self):
         """Met la communication en pause (envoie PWM:0)."""
-        self._paused = True
         self.send_pwm(0)
-
-    def resume(self):
-        """Reprend la communication."""
-        self._paused = False
 
     @staticmethod
     def list_ports():
@@ -162,6 +157,8 @@ class SerialManager:
                 if port != self._port:
                     print(f"[Serial] Port auto-détecté : {port} (configuré : {self._port})")
                     self._port = port
+                    if self._port_changed_callback:
+                        self._port_changed_callback(port)
                 self._connected = True
                 self.status = "Connecté"
                 print(f"[Serial] Connecté sur {port}")
