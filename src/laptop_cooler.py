@@ -73,6 +73,10 @@ class LaptopCoolerApp:
         """Lance l'application."""
         print("[App] Démarrage de Laptop Cooler...")
 
+        # Démarrer le thread télémétrie (non-bloquant pour le thread principal)
+        update_interval = self._config.get("update_interval_ms", 1000)
+        self._telemetry.start(interval_ms=update_interval)
+
         # Démarrer le thread série
         self._serial.start()
 
@@ -102,8 +106,8 @@ class LaptopCoolerApp:
             return
 
         try:
-            # 1. Lire la télémétrie
-            telem = self._telemetry.update()
+            # 1. Lire la télémétrie (non-bloquant — le thread background fait l'update)
+            telem = self._telemetry.get_data()
 
             # 2. Lire le RPM depuis la queue série
             rpm = self._serial.last_rpm
@@ -113,7 +117,8 @@ class LaptopCoolerApp:
             if self._paused:
                 pwm = 0.0
             else:
-                pwm = self._controller.compute(telem)
+                pwm = max(6.0, self._controller.compute(telem))
+                self._controller.notify_actual_pwm(pwm)  # Sync état interne avec valeur réelle
             self._current_pwm = pwm
 
             # 4. Envoyer la consigne à l'Arduino

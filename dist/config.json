@@ -1,0 +1,19 @@
+{
+  "serial_port": "COM3",
+  "baud_rate": 115200,
+  "curve": {
+    "40": 5,
+    "50": 15,
+    "60": 30,
+    "70": 50,
+    "80": 75,
+    "90": 100
+  },
+  "hysteresis": 3,
+  "alpha": 0.10235074626865671,
+  "max_rpm_limit": 28000,
+  "overdrive": 0,
+  "load_threshold": 70,
+  "boost_pwm": 15,
+  "update_interval_ms": 1000
+}

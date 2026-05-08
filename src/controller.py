@@ -42,37 +42,45 @@ class CoolingController:
         # 1. Température de référence = max(CPU, GPU)
         temp_ref = max(cpu_temp, gpu_temp)
 
-        # 2. Interpolation sur la courbe + hystérésis
+        # 2. Limite RPM → plafond PWM (calculé en premier car sert à scaler la courbe)
+        max_rpm = cfg.get("max_rpm_limit", 28000)
+        max_pwm = (max_rpm / 28000.0) * 100.0  # 100% courbe = max_rpm_limit
+
+        # 3. Interpolation sur la courbe + mise à l'échelle + hystérésis
+        # La courbe est en % relatif : 100% = max_pwm, 0% = 0%
         curve = sorted([(int(k), v) for k, v in cfg["curve"].items()])
-        pwm_base_raw = self._interpolate_curve(curve, temp_ref)
+        pwm_base_raw = self._interpolate_curve(curve, temp_ref) * (max_pwm / 100.0)
         pwm_base = self._apply_hysteresis(pwm_base_raw, cfg["hysteresis"])
 
-        # 3. Feedforward : boost si charge élevée
+        # 4. Feedforward : boost si charge élevée
         boost = 0
         load_threshold = cfg.get("load_threshold", 70)
         boost_pwm = cfg.get("boost_pwm", 15)
         if cpu_load > load_threshold or gpu_load > load_threshold:
             boost = boost_pwm
 
-        # 4. PWM brut (plafonné à 100)
-        pwm_raw = min(pwm_base + boost, 100.0)
+        # 5. PWM brut (plafonné à max_pwm)
+        pwm_raw = min(pwm_base + boost, max_pwm)
 
-        # 5. Lissage exponentiel (filtre passe-bas)
+        # 6. Lissage asymétrique : montée lente (alpha configuré), descente rapide (0.5 min)
+        # Évite que le ventilateur reste haut après un pic de température (ex: boot Windows)
         alpha = cfg.get("alpha", 0.15)
-        alpha = max(0.01, min(1.0, alpha))  # Clamp alpha
-        pwm_smoothed = alpha * pwm_raw + (1.0 - alpha) * self._previous_pwm
+        alpha = max(0.01, min(1.0, alpha))
+        alpha_effective = alpha if pwm_raw >= self._previous_pwm else max(alpha, 0.5)
+        pwm_smoothed = alpha_effective * pwm_raw + (1.0 - alpha_effective) * self._previous_pwm
 
-        # 6. Overdrive + limite RPM
+        # 7. Overdrive + clamp final
         overdrive = cfg.get("overdrive", 0)
-        max_rpm = cfg.get("max_rpm_limit", 28000)
-        max_pwm = (max_rpm / 28000.0) * 100.0  # Convertir la limite RPM en % PWM
-
         pwm_final = max(0.0, min(pwm_smoothed + overdrive, max_pwm, 100.0))
 
         # Sauvegarder pour le prochain cycle
         self._previous_pwm = pwm_smoothed
 
         return round(pwm_final, 1)
+
+    def notify_actual_pwm(self, value: float):
+        """Synchronise _previous_pwm avec le PWM réellement envoyé à l'Arduino (plancher inclus)."""
+        self._previous_pwm = float(value)
 
     def reset(self):
         """Réinitialise l'état interne du contrôleur."""
@@ -136,13 +144,13 @@ class CoolingController:
         diff = pwm_target - self._last_base_pwm
 
         if diff > threshold:
-            # Montée significative → suivre
+            # Montée significative → suivre (hystérésis évite les pics inutiles)
             self._last_base_pwm = pwm_target
             self._hysteresis_state = "rising"
-        elif diff < -threshold:
-            # Descente significative → suivre
+        elif pwm_target < self._last_base_pwm:
+            # Descente → toujours suivre immédiatement (le ventilateur doit pouvoir ralentir)
             self._last_base_pwm = pwm_target
             self._hysteresis_state = "falling"
-        # else: maintenir la valeur précédente (dans la bande morte)
+        # else: montée inférieure au seuil → maintenir (bande morte)
 
         return self._last_base_pwm

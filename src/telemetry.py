@@ -4,6 +4,7 @@ telemetry.py — Lecture des capteurs CPU/GPU via LibreHardwareMonitorLib.dll (p
 
 import os
 import sys
+import time
 import threading
 
 # ─── Résolution du chemin DLL ────────────────────────────────────────────────
@@ -83,6 +84,9 @@ class HardwareMonitor:
             "gpu_load": 0.0,
         }
 
+        self._thread = None
+        self._thread_running = False
+
         if LHM_AVAILABLE:
             try:
                 self._computer = Computer()
@@ -93,6 +97,21 @@ class HardwareMonitor:
             except Exception as e:
                 print(f"[Telemetry] Erreur initialisation : {e}")
                 self._computer = None
+
+    def start(self, interval_ms=1000):
+        """Démarre la lecture des capteurs dans un thread background."""
+        if self._thread is not None and self._thread.is_alive():
+            return
+        self._thread_running = True
+        self._thread = threading.Thread(target=self._run_loop, args=(interval_ms / 1000.0,),
+                                        daemon=True, name="TelemetryThread")
+        self._thread.start()
+
+    def _run_loop(self, interval_s):
+        """Boucle interne du thread télémétrie."""
+        while self._thread_running:
+            self.update()
+            time.sleep(interval_s)
 
     def update(self):
         """
@@ -175,7 +194,8 @@ class HardwareMonitor:
             return self._data.copy()
 
     def close(self):
-        """Ferme proprement le Computer LHM."""
+        """Arrête le thread et ferme proprement le Computer LHM."""
+        self._thread_running = False
         if self._computer is not None:
             try:
                 self._computer.Close()

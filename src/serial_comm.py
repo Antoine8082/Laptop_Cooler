@@ -32,6 +32,11 @@ class SerialManager:
         # Queue pour les commandes PWM (le main écrit, le thread série lit)
         self._pwm_queue = queue.Queue(maxsize=10)
 
+        # Keepalive : renvoie la dernière consigne si le main thread se bloque
+        self._last_pwm_sent = 0
+        self._last_send_time = 0.0
+        self._keepalive_interval = 3.0  # secondes
+
         # Dernière valeur RPM connue
         self._last_rpm = 0
         self._rpm_lock = threading.Lock()
@@ -140,25 +145,33 @@ class SerialManager:
                 time.sleep(2)
 
     def _connect(self):
-        """Tente d'ouvrir le port série."""
-        try:
-            self._serial = serial.Serial(
-                port=self._port,
-                baudrate=self._baudrate,
-                timeout=1,          # Timeout lecture 1s (non-bloquant)
-                write_timeout=1,
-            )
-            # Attendre que l'Arduino redémarre (reset DTR)
-            time.sleep(2)
-            # Vider le buffer
-            self._serial.reset_input_buffer()
-            self._connected = True
-            self.status = "Connecté"
-            print(f"[Serial] Connecté sur {self._port}")
-        except (serial.SerialException, OSError) as e:
-            self._connected = False
-            self.status = f"Erreur : {e}"
-            self._serial = None
+        """Tente d'ouvrir le port série, avec auto-détection si le port configuré échoue."""
+        ports_to_try = [self._port] + [p for p in self.list_ports() if p != self._port]
+
+        for port in ports_to_try:
+            try:
+                ser = serial.Serial(
+                    port=port,
+                    baudrate=self._baudrate,
+                    timeout=1,
+                    write_timeout=1,
+                )
+                time.sleep(2)  # Attendre reset DTR Arduino
+                ser.reset_input_buffer()
+                self._serial = ser
+                if port != self._port:
+                    print(f"[Serial] Port auto-détecté : {port} (configuré : {self._port})")
+                    self._port = port
+                self._connected = True
+                self.status = "Connecté"
+                print(f"[Serial] Connecté sur {port}")
+                return
+            except (serial.SerialException, OSError):
+                continue
+
+        self._connected = False
+        self.status = "Déconnecté"
+        self._serial = None
 
     def _disconnect(self):
         """Ferme le port série proprement."""
@@ -172,14 +185,27 @@ class SerialManager:
         self.status = "Déconnecté"
 
     def _process_pwm_queue(self):
-        """Envoie les commandes PWM en attente."""
+        """Envoie les commandes PWM en attente, avec keepalive si le main thread se bloque."""
         try:
+            sent = False
             while not self._pwm_queue.empty():
                 value = self._pwm_queue.get_nowait()
                 cmd = f"PWM:{value}\n"
                 if self._serial and self._serial.is_open:
                     self._serial.write(cmd.encode('ascii'))
                     self._serial.flush()
+                    self._last_pwm_sent = value
+                    self._last_send_time = time.time()
+                    sent = True
+
+            # Keepalive : renvoie la dernière consigne si aucune commande depuis trop longtemps
+            if not sent and (time.time() - self._last_send_time) >= self._keepalive_interval:
+                cmd = f"PWM:{self._last_pwm_sent}\n"
+                if self._serial and self._serial.is_open:
+                    self._serial.write(cmd.encode('ascii'))
+                    self._serial.flush()
+                    self._last_send_time = time.time()
+
         except queue.Empty:
             pass
         except (serial.SerialException, OSError):
@@ -190,8 +216,7 @@ class SerialManager:
         if self._serial is None or not self._serial.is_open:
             return
 
-        # Lire tant qu'il y a des données (avec timeout de 1s max)
-        while self._serial.in_waiting > 0 or True:
+        while True:
             try:
                 line = self._serial.readline().decode('ascii', errors='ignore').strip()
             except serial.SerialTimeoutException:
@@ -221,15 +246,12 @@ class SerialManager:
                     pass
 
             elif line.startswith("ACK:"):
-                pass  # Accusé de réception, on peut le logger si besoin
+                self.status = "Connecté"
 
             elif line.startswith("BOOT:"):
                 print(f"[Serial] Arduino boot : {line}")
                 self.status = "Connecté"
 
-            elif line.startswith("FAILSAFE:"):
-                print(f"[Serial] FAILSAFE activé sur l'Arduino !")
-                self.status = "⚠ Failsafe"
 
             # Sortir de la boucle si plus rien à lire
             if self._serial.in_waiting == 0:
